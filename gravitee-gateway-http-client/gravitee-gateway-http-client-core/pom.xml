@@ -24,13 +24,21 @@
     <parent>
         <groupId>io.gravitee.gateway.http</groupId>
         <artifactId>gravitee-gateway-http-client</artifactId>
-        <version>0.6.0-SNAPSHOT</version>
+        <version>1.5.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>gravitee-gateway-http-client-core</artifactId>
-    <name>Gravitee IO - Gateway - HTTP Client - Core</name>
+    <name>Gravitee.io APIM - Gateway - HTTP Client - Core</name>
 
     <dependencies>
+        <!-- Gravitee dependencies -->
+        <dependency>
+            <groupId>io.gravitee.gateway</groupId>
+            <artifactId>gravitee-gateway-env</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Spring dependencies -->
         <dependency>
             <groupId>org.springframework</groupId>

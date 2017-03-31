@@ -24,24 +24,43 @@
     <parent>
         <groupId>io.gravitee.gateway.services</groupId>
         <artifactId>gravitee-gateway-services</artifactId>
-        <version>0.6.0-SNAPSHOT</version>
+        <version>1.5.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>gravitee-gateway-services-sync</artifactId>
-    <name>Gravitee IO - Gateway - Services - Sync</name>
+    <name>Gravitee.io APIM - Gateway - Services - Sync</name>
 
     <dependencies>
         <!-- Gravitee.io dependencies -->
         <dependency>
             <groupId>io.gravitee.common</groupId>
             <artifactId>gravitee-common</artifactId>
-            <version>${gravitee-common.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.repository</groupId>
+            <artifactId>gravitee-repository</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.gateway.handlers</groupId>
+            <artifactId>gravitee-gateway-handlers-api</artifactId>
+            <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>io.gravitee.gateway</groupId>
-            <artifactId>gravitee-gateway-core</artifactId>
+            <artifactId>gravitee-gateway-env</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.gateway</groupId>
+            <artifactId>gravitee-gateway-reactor</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>

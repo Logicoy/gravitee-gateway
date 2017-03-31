@@ -1,0 +1,21 @@
+{
+  "id": "api-echo",
+  "name": "api-echo",
+
+  "proxy": {
+    "context_path": "/echo",
+    "endpoints": [
+      {
+        "name": "default",
+        "target": "http://localhost:8080/echo"
+      }
+    ],
+    "strip_context_path": false,
+    "dumpRequest": true
+  },
+
+  "paths": {
+    "/*": [
+    ]
+  }
+}

@@ -1,9 +1,0 @@
-
-plugins:
-  path: ${gravitee.home}/io/gravitee/gateway/core/plugin/workspace
-
-management:
-  type: mock
-
-sync:
-  cron: '*/5 * * * * *'

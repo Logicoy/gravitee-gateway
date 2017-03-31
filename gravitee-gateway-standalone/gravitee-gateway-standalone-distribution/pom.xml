@@ -23,12 +23,12 @@
     <parent>
         <groupId>io.gravitee.gateway.standalone</groupId>
         <artifactId>gravitee-gateway-standalone</artifactId>
-        <version>0.6.0-SNAPSHOT</version>
+        <version>1.5.0-SNAPSHOT</version>
     </parent>
 
 	<artifactId>gravitee-gateway-standalone-distribution</artifactId>
 	<packaging>pom</packaging>
-	<name>Gravitee IO - Gateway - Standalone - Distribution</name>
+	<name>Gravitee.io APIM - Gateway - Standalone - Distribution</name>
 	  
  	<properties>
         <!-- Properties used for building RPM & DEB package-->
@@ -65,9 +65,10 @@
 
         <dependency>
             <groupId>io.gravitee.gateway.services</groupId>
-            <artifactId>gravitee-gateway-services-monitoring</artifactId>
+            <artifactId>gravitee-gateway-services-healthcheck</artifactId>
             <version>${project.version}</version>
             <type>zip</type>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
@@ -75,12 +76,30 @@
             <artifactId>gravitee-gateway-services-sync</artifactId>
             <version>${project.version}</version>
             <type>zip</type>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
             <groupId>io.gravitee.gateway.services</groupId>
             <artifactId>gravitee-gateway-services-localregistry</artifactId>
             <version>${project.version}</version>
+            <type>zip</type>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.gateway.services</groupId>
+            <artifactId>gravitee-gateway-services-apikeyscache</artifactId>
+            <version>${project.version}</version>
+            <type>zip</type>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.gateway.services</groupId>
+            <artifactId>gravitee-gateway-services-monitoring</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
             <type>zip</type>
         </dependency>
     </dependencies>
@@ -90,8 +109,56 @@
         
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-plugins</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${basedir}/target/staging</outputDirectory>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>io.gravitee.gateway.services</groupId>
+                                    <artifactId>gravitee-gateway-services-healthcheck</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>zip</type>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>io.gravitee.gateway.services</groupId>
+                                    <artifactId>gravitee-gateway-services-sync</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>zip</type>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>io.gravitee.gateway.services</groupId>
+                                    <artifactId>gravitee-gateway-services-localregistry</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>zip</type>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>io.gravitee.gateway.services</groupId>
+                                    <artifactId>gravitee-gateway-services-apikeyscache</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>zip</type>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>io.gravitee.gateway.services</groupId>
+                                    <artifactId>gravitee-gateway-services-monitoring</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>zip</type>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
-                <version>2.4</version>
+                <version>2.6</version>
                 <inherited>false</inherited>
                 <executions>
                     <execution>

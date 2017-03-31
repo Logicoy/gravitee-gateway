@@ -15,116 +15,181 @@
  */
 package io.gravitee.gateway.services.monitoring;
 
-import io.gravitee.common.event.Event;
-import io.gravitee.common.event.EventListener;
-import io.gravitee.common.event.EventManager;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gravitee.common.node.Node;
 import io.gravitee.common.service.AbstractService;
-import io.gravitee.definition.model.Api;
-import io.gravitee.definition.model.Monitoring;
-import io.gravitee.gateway.core.event.ApiEvent;
-import io.gravitee.gateway.core.reporter.ReporterService;
+import io.gravitee.common.util.Version;
+import io.gravitee.common.utils.UUID;
+import io.gravitee.gateway.env.GatewayConfiguration;
+import io.gravitee.gateway.services.monitoring.event.InstanceEventPayload;
+import io.gravitee.gateway.services.monitoring.event.Plugin;
+import io.gravitee.plugin.core.api.PluginRegistry;
+import io.gravitee.repository.management.api.EventRepository;
+import io.gravitee.repository.management.model.Event;
+import io.gravitee.repository.management.model.EventType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * @author David BRASSELY (brasseld at gmail.com)
+ * @author GraviteeSource Team
  */
-public class MonitoringService extends AbstractService implements EventListener<ApiEvent, Api> {
+public class MonitoringService extends AbstractService {
 
-    private final static Logger LOGGER = LoggerFactory.getLogger(MonitoringService.class);
-
-    @Autowired
-    private EventManager eventManager;
+    private static final Logger LOGGER = LoggerFactory.getLogger(MonitoringService.class);
 
     @Autowired
-    private ReporterService reporterService;
+    private ObjectMapper objectMapper;
 
-    private final Map<Api, ExecutorService> monitors = new HashMap<>();
+    @Value("${services.monitoring.enabled:true}")
+    private boolean enabled;
+
+    @Value("${services.monitoring.delay:5000}")
+    private int delay;
+
+    @Value("${services.monitoring.unit:MILLISECONDS}")
+    private TimeUnit unit;
+
+    @Value("${http.port:8082}")
+    private String port;
+
+    @Autowired
+    private Node node;
+
+    @Autowired
+    private PluginRegistry pluginRegistry;
+
+    @Autowired
+    private EventRepository eventRepository;
+
+    private ExecutorService executorService;
+
+    private Event heartbeatEvent;
+
+    @Autowired
+    private GatewayConfiguration gatewayConfiguration;
 
     @Override
     protected void doStart() throws Exception {
-        super.doStart();
+        if (enabled) {
+            super.doStart();
+            LOGGER.info("Start gateway monitor");
 
-        eventManager.subscribeForEvents(this, ApiEvent.class);
+            Event evt = prepareEvent();
+            LOGGER.debug("Sending a {} event", evt.getType());
+            heartbeatEvent = eventRepository.create(evt);
+
+            executorService = Executors.newSingleThreadScheduledExecutor(
+                    r -> new Thread(r, "gateway-monitor"));
+
+            MonitorThread monitorThread = new MonitorThread(heartbeatEvent);
+            this.applicationContext.getAutowireCapableBeanFactory().autowireBean(monitorThread);
+
+            LOGGER.info("Monitoring scheduled with fixed delay {} {} ", delay, unit.name());
+
+            ((ScheduledExecutorService) executorService).scheduleWithFixedDelay(
+                    monitorThread, 0, delay, unit);
+
+            LOGGER.info("Start gateway monitor : DONE");
+        }
     }
 
     @Override
     protected void doStop() throws Exception {
-        super.doStop();
+        if (enabled) {
+            if (! executorService.isShutdown()) {
+                LOGGER.info("Stop gateway monitor");
+                executorService.shutdownNow();
+            } else {
+                LOGGER.info("Gateway monitor already shut-downed");
+            }
 
-        Iterator<Map.Entry<Api, ExecutorService>> ite = monitors.entrySet().iterator();
-        while (ite.hasNext())
-        {
-            Map.Entry<Api, ExecutorService> entry = ite.next();
-            stopMonitor(entry.getKey(), entry.getValue());
-            ite.remove();
+            heartbeatEvent.setType(EventType.GATEWAY_STOPPED);
+            heartbeatEvent.getProperties().put("stopped_at", Long.toString(new Date().getTime()));
+            LOGGER.debug("Sending a {} event", heartbeatEvent.getType());
+            eventRepository.update(heartbeatEvent);
+
+            super.doStop();
+            LOGGER.info("Stop gateway monitor : DONE");
         }
+    }
+
+    private Event prepareEvent() {
+        Event event = new Event();
+        event.setId(UUID.random().toString());
+        event.setType(EventType.GATEWAY_STARTED);
+        event.setCreatedAt(new Date());
+        event.setUpdatedAt(event.getCreatedAt());
+        Map<String, String> properties = new HashMap<>();
+        properties.put("id", node.id());
+        properties.put("started_at", Long.toString(event.getCreatedAt().getTime()));
+        properties.put("last_heartbeat_at", Long.toString(event.getCreatedAt().getTime()));
+        event.setProperties(properties);
+
+        InstanceEventPayload instance = createInstanceInfo();
+
+        try {
+            String payload = objectMapper.writeValueAsString(instance);
+            event.setPayload(payload);
+        } catch (JsonProcessingException jsex) {
+            LOGGER.error("An error occurs while transforming instance information into JSON", jsex);
+        }
+        return event;
+    }
+
+    private InstanceEventPayload createInstanceInfo() {
+        InstanceEventPayload instanceInfo = new InstanceEventPayload();
+
+        instanceInfo.setId(node.id());
+        instanceInfo.setVersion(Version.RUNTIME_VERSION.toString());
+
+        Optional<List<String>> shardingTags = gatewayConfiguration.shardingTags();
+        instanceInfo.setTags(shardingTags.isPresent() ? shardingTags.get() : null);
+
+        instanceInfo.setPlugins(plugins());
+        instanceInfo.setSystemProperties(new HashMap<>((Map) System.getProperties()));
+        instanceInfo.setPort(port);
+
+        Optional<String> tenant = gatewayConfiguration.tenant();
+        instanceInfo.setTenant(tenant.isPresent() ? tenant.get() : null);
+
+        try {
+            instanceInfo.setHostname(InetAddress.getLocalHost().getHostName());
+            instanceInfo.setIp(InetAddress.getLocalHost().getHostAddress());
+        } catch (UnknownHostException uhe) {
+            LOGGER.warn("Could not get hostname / IP", uhe);
+        }
+
+        return instanceInfo;
+    }
+
+    public Set<Plugin> plugins() {
+        return pluginRegistry.plugins().stream().map(regPlugin -> {
+            Plugin plugin = new Plugin();
+            plugin.setId(regPlugin.id());
+            plugin.setName(regPlugin.manifest().name());
+            plugin.setDescription(regPlugin.manifest().description());
+            plugin.setVersion(regPlugin.manifest().version());
+            plugin.setType(regPlugin.type().name().toLowerCase());
+            plugin.setPlugin(regPlugin.clazz());
+            return plugin;
+        }).collect(Collectors.toSet());
     }
 
     @Override
     protected String name() {
-        return "Endpoint Monitoring Service";
-    }
-
-    @Override
-    public void onEvent(Event<ApiEvent, Api> event) {
-        final Api api = event.content();
-
-        switch (event.type()) {
-            case DEPLOY:
-                startMonitor(api);
-                break;
-            case UNDEPLOY:
-                stopMonitor(api);
-                break;
-            case UPDATE:
-                stopMonitor(api);
-                startMonitor(api);
-                break;
-        }
-    }
-
-    private void startMonitor(Api api) {
-        Monitoring monitoring = api.getMonitoring();
-        if (monitoring != null && monitoring.isEnabled()) {
-            LOGGER.info("Create an executor to monitor {}", api);
-
-            EndpointMonitor monitor = new EndpointMonitor(api);
-            monitor.setReporterService(reporterService);
-
-            ExecutorService executor = Executors.newSingleThreadScheduledExecutor(
-                    r -> new Thread(r, "monitor-" + api.getName()));
-
-            monitors.put(api, executor);
-
-            LOGGER.info("Start monitor for {}", api);
-            ((ScheduledExecutorService) executor).scheduleWithFixedDelay(
-                    monitor, 0, monitoring.getInterval(), monitoring.getUnit());
-        } else {
-            LOGGER.info("Monitoring is disabled for {}", api);
-        }
-    }
-
-    private void stopMonitor(Api api, ExecutorService executor) {
-        if (executor != null) {
-            if (! executor.isShutdown()) {
-                LOGGER.info("Stop monitor for {}", api);
-                executor.shutdownNow();
-            } else {
-                LOGGER.info("Monitor already shutdown for {}", api);
-            }
-        }
-    }
-
-    private void stopMonitor(Api api) {
-        stopMonitor(api, monitors.get(api));
+        return "Gateway Monitor";
     }
 }

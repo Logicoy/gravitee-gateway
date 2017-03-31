@@ -18,20 +18,24 @@ package io.gravitee.gateway.standalone.vertx;
 import io.gravitee.common.http.HttpHeaders;
 import io.gravitee.common.http.HttpMethod;
 import io.gravitee.common.http.HttpVersion;
+import io.gravitee.common.utils.UUID;
 import io.gravitee.gateway.api.Request;
+import io.gravitee.gateway.api.buffer.Buffer;
 import io.gravitee.gateway.api.handler.Handler;
-import io.gravitee.gateway.api.http.BodyPart;
+import io.gravitee.reporter.api.http.RequestMetrics;
+import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
 
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
- * @author David BRASSELY (brasseld at gmail.com)
+ * @author David BRASSELY (david.brassely at graviteesource.com)
+ * @author GraviteeSource Team
  */
-public class VertxHttpServerRequest implements Request {
+class VertxHttpServerRequest implements Request {
 
     private final String id;
     private final Instant instant;
@@ -42,15 +46,24 @@ public class VertxHttpServerRequest implements Request {
 
     private HttpHeaders headers = null;
 
+    private final RequestMetrics metrics;
+
     VertxHttpServerRequest(HttpServerRequest httpServerRequest) {
         this.httpServerRequest = httpServerRequest;
         this.instant = Instant.now();
-        this.id = UUID.randomUUID().toString();
+        this.id = UUID.toString(UUID.random());
+        this.metrics = RequestMetrics.on(instant.toEpochMilli()).build();
+        this.init();
     }
 
     @Override
     public String id() {
         return id;
+    }
+
+    @Override
+    public String transactionId() {
+        throw new IllegalStateException("Request not yet managed.");
     }
 
     @Override
@@ -64,12 +77,23 @@ public class VertxHttpServerRequest implements Request {
     }
 
     @Override
+    public String pathInfo() {
+        return path();
+    }
+
+    @Override
+    public String contextPath() {
+        throw new IllegalStateException("Request not yet managed.");
+    }
+
+    @Override
     public Map<String, String> parameters() {
         if (queryParameters == null) {
             queryParameters = new HashMap<>(httpServerRequest.params().size());
 
-            httpServerRequest.params().forEach(param ->
-                    queryParameters.put(param.getKey(), param.getValue()));
+            for(Map.Entry<String, String> param : httpServerRequest.params()) {
+                queryParameters.put(param.getKey(), param.getValue());
+            }
         }
 
         return queryParameters;
@@ -78,9 +102,11 @@ public class VertxHttpServerRequest implements Request {
     @Override
     public HttpHeaders headers() {
         if (headers == null) {
-            headers = new HttpHeaders();
-            httpServerRequest.headers().forEach(header ->
-                    headers.add(header.getKey(), header.getValue()));
+            MultiMap vertxHeaders = httpServerRequest.headers();
+            headers = new HttpHeaders(vertxHeaders.size());
+            for(Map.Entry<String, String> header : vertxHeaders) {
+                headers.add(header.getKey(), header.getValue());
+            }
         }
 
         return headers;
@@ -103,17 +129,19 @@ public class VertxHttpServerRequest implements Request {
 
     @Override
     public String remoteAddress() {
-        return httpServerRequest.remoteAddress().host();
+        SocketAddress address = httpServerRequest.remoteAddress();
+        return (address != null) ? address.host() : null;
     }
 
     @Override
     public String localAddress() {
-        return httpServerRequest.localAddress().host();
+        SocketAddress address = httpServerRequest.localAddress();
+        return (address != null) ? address.host() : null;
     }
 
     @Override
-    public Request bodyHandler(Handler<BodyPart> bodyHandler) {
-        httpServerRequest.handler(buffer -> bodyHandler.handle(new VertxBufferBodyPart(buffer)));
+    public Request bodyHandler(Handler<Buffer> bodyHandler) {
+        httpServerRequest.handler(buffer -> bodyHandler.handle(Buffer.buffer(buffer.getBytes())));
         return this;
     }
 
@@ -121,5 +149,33 @@ public class VertxHttpServerRequest implements Request {
     public Request endHandler(Handler<Void> endHandler) {
         httpServerRequest.endHandler(endHandler::handle);
         return this;
+    }
+
+    @Override
+    public Request pause() {
+        httpServerRequest.pause();
+        return this;
+    }
+
+    @Override
+    public Request resume() {
+        httpServerRequest.resume();
+        return this;
+    }
+
+    @Override
+    public RequestMetrics metrics() {
+        return metrics;
+    }
+
+    private void init() {
+        this.metrics.setRequestId(id());
+        this.metrics.setRequestHttpMethod(method());
+        this.metrics.setRequestLocalAddress(localAddress());
+        this.metrics.setRequestRemoteAddress(remoteAddress());
+        this.metrics.setRequestPath(path());
+        this.metrics.setRequestUri(uri());
+        this.metrics.setRequestContentType(headers().contentType());
+        this.metrics.setRequestContentLength(headers().contentLength());
     }
 }

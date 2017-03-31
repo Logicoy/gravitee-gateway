@@ -20,7 +20,7 @@ import ch.qos.logback.classic.joran.JoranConfigurator;
 import ch.qos.logback.core.joran.spi.JoranException;
 import ch.qos.logback.core.util.StatusPrinter;
 import io.gravitee.common.node.Node;
-import io.gravitee.gateway.core.spring.PropertiesConfiguration;
+import io.gravitee.gateway.env.PropertiesConfiguration;
 import io.gravitee.gateway.standalone.spring.StandaloneConfiguration;
 import org.slf4j.LoggerFactory;
 import org.slf4j.impl.StaticLoggerBinder;
@@ -31,7 +31,8 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import java.io.File;
 
 /**
- * @author David BRASSELY (brasseld at gmail.com)
+ * @author David BRASSELY (david.brassely at graviteesource.com)
+ * @author GraviteeSource Team
  */
 public class Container {
 
@@ -47,8 +48,6 @@ public class Container {
     }
 
     private void initialize() {
-        LoggerFactory.getLogger(Container.class).info("Start Gravitee Container...");
-
         initializeEnvironment();
         initializeLogging();
         initializeContext();
@@ -71,17 +70,17 @@ public class Container {
 
         // If logback configuration available, load it, else, load default logback configuration
         if (logbackConfigurationfile.exists()) {
-                System.setProperty("logback.configurationFile", logbackConfigurationfile.getAbsolutePath());
-                StaticLoggerBinder loggerBinder = StaticLoggerBinder.getSingleton();
-                LoggerContext loggerContext = (LoggerContext) loggerBinder.getLoggerFactory();
-                loggerContext.reset();
-                JoranConfigurator configurator = new JoranConfigurator();
-                configurator.setContext(loggerContext);
-                try {
-                    configurator.doConfigure(logbackConfigurationfile);
-                } catch( JoranException e ) {
-                    e.printStackTrace();
-                }
+            System.setProperty("logback.configurationFile", logbackConfigurationfile.getAbsolutePath());
+            StaticLoggerBinder loggerBinder = StaticLoggerBinder.getSingleton();
+            LoggerContext loggerContext = (LoggerContext) loggerBinder.getLoggerFactory();
+            loggerContext.reset();
+            JoranConfigurator configurator = new JoranConfigurator();
+            configurator.setContext(loggerContext);
+            try {
+                configurator.doConfigure(logbackConfigurationfile);
+            } catch( JoranException e ) {
+                LoggerFactory.getLogger(Container.class).error("An error occurs while initializing logging system", e);
+            }
 
             // Internal status data is printed in case of warnings or errors.
             StatusPrinter.printInCaseOfErrorsOrWarnings(loggerContext);
@@ -89,10 +88,9 @@ public class Container {
     }
 
     private void initializeContext() {
-        LoggerFactory.getLogger(Container.class).info("Initializing Gravitee Container context...");
+        LoggerFactory.getLogger(Container.class).info("Initializing Gravitee Gateway context...");
         ctx = new AnnotationConfigApplicationContext();
         ((AnnotationConfigApplicationContext)ctx).register(StandaloneConfiguration.class);
-//        ctx.registerShutdownHook();
         ctx.refresh();
     }
 
@@ -104,12 +102,19 @@ public class Container {
      * Stop a new gravitee instance node.
      */
     public void start() {
-        node.start();
+        LoggerFactory.getLogger(Container.class).info("Start Gravitee Gateway...");
 
-        // Register shutdown hook
-        Thread shutdownHook = new ContainerShutdownHook();
-        shutdownHook.setName("gravitee-finalizer");
-        Runtime.getRuntime().addShutdownHook(shutdownHook);
+        try {
+            node.start();
+
+            // Register shutdown hook
+            Thread shutdownHook = new ContainerShutdownHook();
+            shutdownHook.setName("gravitee-finalizer");
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
+        } catch (Exception ex) {
+            LoggerFactory.getLogger(Container.class).error("An unexpected error occurs while starting gateway", ex);
+            stop();
+        }
     }
 
     /**
@@ -117,11 +122,16 @@ public class Container {
      */
     public void stop() {
         if (! stopped) {
-            LoggerFactory.getLogger(Container.class).info("Shutting-down Gravitee Container...");
+            LoggerFactory.getLogger(Container.class).info("Shutting-down Gravitee Gateway...");
 
-            stopped = true;
-            node.stop();
-            ctx.close();
+            try {
+                node.stop();
+            } catch (Exception ex) {
+                LoggerFactory.getLogger(Container.class).error("Unexpected error", ex);
+            } finally {
+                ctx.close();
+                stopped = true;
+            }
         }
     }
 

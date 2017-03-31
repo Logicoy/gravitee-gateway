@@ -24,11 +24,11 @@
     <parent>
         <groupId>io.gravitee.gateway.services</groupId>
         <artifactId>gravitee-gateway-services</artifactId>
-        <version>0.6.0-SNAPSHOT</version>
+        <version>1.5.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>gravitee-gateway-services-localregistry</artifactId>
-    <name>Gravitee IO - Gateway - Services - Local Registry</name>
+    <name>Gravitee.io APIM - Gateway - Services - Local Registry</name>
 
     <dependencies>
         <!-- Gravitee.io dependencies -->
@@ -40,9 +40,15 @@
         </dependency>
 
         <dependency>
-            <groupId>io.gravitee.gateway</groupId>
-            <artifactId>gravitee-gateway-core</artifactId>
+            <groupId>io.gravitee.gateway.handlers</groupId>
+            <artifactId>gravitee-gateway-handlers-api</artifactId>
             <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.definition</groupId>
+            <artifactId>gravitee-definition-jackson</artifactId>
             <scope>provided</scope>
         </dependency>
 

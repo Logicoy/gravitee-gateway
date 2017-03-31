@@ -1,8 +1,17 @@
 
+http:
+  instances: 1
+
 plugins:
     path: ${gravitee.home}/plugins
 
 management:
+  type: mock
+
+ratelimit:
+  type: mock
+
+cache:
   type: mock
 
 sync:

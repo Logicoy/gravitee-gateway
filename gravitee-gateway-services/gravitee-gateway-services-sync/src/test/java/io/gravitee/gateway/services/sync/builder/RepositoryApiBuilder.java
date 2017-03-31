@@ -15,13 +15,15 @@
  */
 package io.gravitee.gateway.services.sync.builder;
 
-
 import io.gravitee.repository.management.model.Api;
+import io.gravitee.repository.management.model.LifecycleState;
 
 import java.util.Date;
 
 /**
- * @author David BRASSELY (brasseld at gmail.com)
+ * @author David BRASSELY (david.brassely at graviteesource.com)
+ * @author Titouan COMPIEGNE (titouan.compiegne at graviteesource.com)
+ * @author GraviteeSource Team
  */
 public class RepositoryApiBuilder {
 
@@ -39,6 +41,11 @@ public class RepositoryApiBuilder {
 
     public RepositoryApiBuilder definition(String definition) {
         this.api.setDefinition(definition);
+        return this;
+    }
+    
+    public RepositoryApiBuilder lifecycleState(LifecycleState lifecycleState) {
+        this.api.setLifecycleState(lifecycleState);
         return this;
     }
 
